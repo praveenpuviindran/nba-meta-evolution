@@ -3,8 +3,7 @@ from nba_api.stats.endpoints import leaguedashptstats
 import time
 import os
 
-# 1. Configuration
-# Tracking data became reliable around 2013-14.
+# CONFIGURATION
 SEASONS = [
     '2013-14', '2014-15', '2015-16', '2016-17', '2017-18', 
     '2018-19', '2019-20', '2020-21', '2021-22', '2022-23', 
@@ -14,10 +13,9 @@ SEASONS = [
 OUTPUT_FOLDER = 'data'
 OUTPUT_FILE = 'tracking_data_2014_2025.csv'
 
-# We need four different "Measure Types" to get a complete picture of a player
 MEASURE_TYPES = ['Possessions', 'SpeedDistance', 'Defense', 'Efficiency']
 
-print("--- STARTING TRACKING DATA INGESTION ---")
+print("--- STARTING TRACKING DATA INGESTION (FIXED) ---")
 
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER)
@@ -27,14 +25,12 @@ all_seasons_data = []
 for season in SEASONS:
     print(f"Processing Season: {season}...")
     
-    # We need to merge the 4 datasets for the current season into one row per player
     season_merged = None
     
     try:
         for measure in MEASURE_TYPES:
             print(f"   > Fetching {measure}...")
             
-            # API Call
             api_call = leaguedashptstats.LeagueDashPtStats(
                 season=season,
                 player_or_team='Player',
@@ -42,34 +38,31 @@ for season in SEASONS:
             )
             df = api_call.get_data_frames()[0]
             
-            # Select only the specific columns we need from this measure type
-            # This prevents duplicate columns and keeps the file size manageable
+            # --- THE FIX IS HERE ---
             if measure == 'Possessions':
-                # Base identifiers + Touch data
+                # Corrected 'AVG_DRIB_PER_TOUCH'
                 cols = ['PLAYER_ID', 'PLAYER_NAME', 'TEAM_ABBREVIATION', 'GP', 'MIN', 
-                        'AVG_SEC_PER_TOUCH', 'AVG_DRIBBLES_PER_TOUCH', 'TOUCHES', 
+                        'AVG_SEC_PER_TOUCH', 'AVG_DRIB_PER_TOUCH', 'TOUCHES', 
                         'ELBOW_TOUCHES', 'POST_TOUCHES', 'PAINT_TOUCHES']
             elif measure == 'SpeedDistance':
                 cols = ['PLAYER_ID', 'AVG_SPEED', 'DIST_MILES', 'AVG_SPEED_OFF', 'AVG_SPEED_DEF']
             elif measure == 'Defense':
-                # Note: Defense stats in this endpoint are limited, but we take what we can
                 cols = ['PLAYER_ID', 'STL', 'BLK'] 
             elif measure == 'Efficiency':
                 cols = ['PLAYER_ID', 'DRIVE_PTS', 'CATCH_SHOOT_PTS', 'PULL_UP_PTS', 'PAINT_TOUCH_PTS']
 
-            # Filter to keep only columns that actually exist in the response
+            # Filter
             available_cols = [c for c in cols if c in df.columns]
             df_subset = df[available_cols]
 
-            # Merge logic
+            # Merge
             if season_merged is None:
                 season_merged = df_subset
             else:
                 season_merged = pd.merge(season_merged, df_subset, on='PLAYER_ID', how='left')
             
-            time.sleep(0.6) # Slight pause to respect API limits
+            time.sleep(0.6) 
         
-        # Tag the season
         if season_merged is not None:
             season_merged['SEASON_LABEL'] = season
             all_seasons_data.append(season_merged)
@@ -78,7 +71,7 @@ for season in SEASONS:
     except Exception as e:
         print(f"   > ERROR in {season}: {e}")
 
-# Compile and Save
+# Save
 if all_seasons_data:
     final_df = pd.concat(all_seasons_data, ignore_index=True)
     final_df.fillna(0, inplace=True)
